@@ -12,24 +12,36 @@ api = Apipj()
 
 # --- STRUMENTO 1: Cerca un'azienda per CNPJ ---
 @mcp.tool()
-def buscar_empresa_por_cnpj(cnpj: str) -> dict:
+@mcp.tool()
+async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
     """
     Busca dados cadastrais de uma empresa brasileira pelo CNPJ.
     Retorna razão social, situação, endereço e sócios.
     """
-    # Valida o CNPJ localmente (não gasta cota se inválido)
+    from apipj import Apipj, cnpj_valido, normalizar_cnpj
+    
+    # Legge la chiave dall'header X-Apipj-Key, o dalla variabile d'ambiente
+    api_key = None
+    try:
+        api_key = ctx.request_context.request.headers.get("x-apipj-key")
+    except Exception:
+        pass
+    if not api_key:
+        api_key = os.getenv("APIPJ_KEY")
+    
+    if not api_key:
+        return {"erro": "Chave API apipj não configurada. Envie o header X-Apipj-Key ou configure APIPJ_KEY."}
+    
+    api = Apipj(chave=api_key, avisos=False)
+    
     if not cnpj_valido(cnpj):
         return {"erro": "CNPJ inválido. Verifique os dígitos."}
     
     try:
         empresa = api.consultar(normalizar_cnpj(cnpj))
-        
-        # Se a empresa não for encontrada (404), retorna erro estruturado
         if empresa is None:
             return {"erro": "CNPJ não encontrado na base da Receita Federal."}
         
-        # Estrutura a resposta para o agente
-        # Nota: apipj usa campos aninhados (endereco.municipio.nome, cnae_principal.descricao)
         return {
             "cnpj": empresa.get("cnpj"),
             "razao_social": empresa.get("razao_social"),
