@@ -25,7 +25,7 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     uf = None
     bairro = None
 
-    # 1. BrasilAPI: obtém endereço E código IBGE (sempre presente)
+    # 1. BrasilAPI: obtém endereço E código IBGE
     try:
         brasilapi_url = f"https://brasilapi.com.br/api/cep/v1/{cep_limpo}"
         resp = requests.get(brasilapi_url, timeout=10)
@@ -34,14 +34,13 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
             municipio = endereco.get("city")
             uf = endereco.get("state")
             bairro = endereco.get("neighborhood")
-            # BrasilAPI restituisce il codice IBGE in un oggetto annidato: {"ibge": {"city": "4202404", "state": "42"}}
             ibge_obj = endereco.get("ibge")
             if isinstance(ibge_obj, dict):
                 ibge_code = ibge_obj.get("city")
     except Exception:
         pass
 
-    # Fallback: ViaCEP se BrasilAPI fallisce o non restituisce il codice IBGE
+    # Fallback: ViaCEP se BrasilAPI fallisce
     if not ibge_code:
         try:
             viacep_url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
@@ -59,7 +58,7 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     if not municipio or not uf:
         return {"erro": "CEP não encontrado."}
 
-    # 2. Crime Brasil
+    # 2. Crime Brasil (con fallback da bairro a comune)
     try:
         base_url = "https://crimebrasil.com.br/api/location-stats"
         params = {
@@ -70,11 +69,11 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         if bairro:
             params["bairro"] = _normalize_text(bairro)
 
-                resp_crime = requests.get(base_url, params=params, timeout=15)
+        resp_crime = requests.get(base_url, params=params, timeout=15)
         resp_crime.raise_for_status()
         dados = resp_crime.json()
-        
-        # Se il bairro non ha dati (total = 0), riprova senza bairro (fallback comunale)
+
+        # Se il bairro non ha dati (total = 0), riprova senza bairro
         if bairro and dados.get("total", 0) == 0:
             params.pop("bairro", None)
             resp_crime = requests.get(base_url, params=params, timeout=15)
@@ -84,22 +83,18 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         return {"erro": f"Falha ao consultar Crime Brasil: {str(e)}"}
 
     total = dados.get("total", 0)
-    
-        # 3. População: usa a API SIDRA do IBGE (mais simples e confiável)
+
+    # 3. População: usa a API SIDRA do IBGE (mais simples e confiável)
     populacao = None
     if ibge_code:
         try:
-            # API SIDRA: tabela 10211 (População residente), variável 93
-            # O código do município é o nível territorial N6
             sidra_url = (
                 f"https://apisidra.ibge.gov.br/values/t/10211/n6/{ibge_code}/v/93/p/2022"
             )
             resp_sidra = requests.get(sidra_url, timeout=15)
             if resp_sidra.status_code == 200:
                 sidra_data = resp_sidra.json()
-                # A primeira linha contém os cabeçalhos; os dados começam na segunda
                 if len(sidra_data) > 1:
-                    # O valor da população está na coluna "V" (valor)
                     linha_dados = sidra_data[1]
                     valor_str = linha_dados.get("V")
                     if valor_str and valor_str not in ("-", "..", "..."):
@@ -110,6 +105,9 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     # Fallback: popolazione dal Crime Brasil
     if not populacao:
         populacao = dados.get("population")
+
+    if not populacao or populacao == 0:
+        return {"erro": "População não disponível para esta localidade. Tente outro CEP."}
 
     # 4. Índice de risco
     taxa_100k = (total / populacao) * 100000
