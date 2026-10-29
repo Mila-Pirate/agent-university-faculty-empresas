@@ -109,7 +109,7 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         except Exception:
             pass
 
-        # Fallback: popolazione dal Crime Brasil
+    # Fallback: popolazione dal Crime Brasil (correttamente indentato)
     if not populacao:
         populacao = dados.get("population")
 
@@ -127,7 +127,6 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         risco = "Médio"
     else:
         risco = "Baixo"
-        
 
     return {
         "cep": cep_limpo,
