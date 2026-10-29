@@ -62,11 +62,11 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         return {"erro": f"Falha ao consultar Crime Brasil: {str(e)}"}
 
     # 4. Calcula o índice de risco
-    total = dados.get("total", 0)
-    populacao = dados.get("population", 1)
+        total = dados.get("total", 0)
+    populacao = dados.get("population")
     
-    if populacao == 0:
-        return {"erro": "População não disponível para esta localidade."}
+    if not populacao or populacao == 0:
+        return {"erro": "População não disponível para esta localidade. Tente outro CEP ou município."}
 
     # Taxa por 100k habitantes
     taxa_100k = (total / populacao) * 100000
