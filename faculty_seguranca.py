@@ -70,12 +70,16 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         if bairro:
             params["bairro"] = _normalize_text(bairro)
 
-        resp_crime = requests.get(base_url, params=params, timeout=15)
-        if resp_crime.status_code != 200 and bairro:
-            params.pop("bairro", None)
-            resp_crime = requests.get(base_url, params=params, timeout=15)
+                resp_crime = requests.get(base_url, params=params, timeout=15)
         resp_crime.raise_for_status()
         dados = resp_crime.json()
+        
+        # Se il bairro non ha dati (total = 0), riprova senza bairro (fallback comunale)
+        if bairro and dados.get("total", 0) == 0:
+            params.pop("bairro", None)
+            resp_crime = requests.get(base_url, params=params, timeout=15)
+            resp_crime.raise_for_status()
+            dados = resp_crime.json()
     except Exception as e:
         return {"erro": f"Falha ao consultar Crime Brasil: {str(e)}"}
 
