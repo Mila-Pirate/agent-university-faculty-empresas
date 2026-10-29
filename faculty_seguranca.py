@@ -129,6 +129,7 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         risco = "Baixo"
 
     return {
+        "debug_version": "v2",  # <-- AGGIUNGI QUESTA RIGA
         "cep": cep_limpo,
         "localidade": {
             "municipio": municipio,
