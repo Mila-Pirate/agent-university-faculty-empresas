@@ -109,12 +109,15 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         except Exception:
             pass
 
-    # Fallback: popolazione dal Crime Brasil
+        # Fallback: popolazione dal Crime Brasil
     if not populacao:
         populacao = dados.get("population")
 
     if not populacao or populacao == 0:
         return {"erro": "População não disponível para esta localidade. Tente outro CEP."}
+
+    # Estrai il totale dei crimini dai dati
+    total = dados.get("total", 0)
 
     # 4. Índice de risco
     taxa_100k = (total / populacao) * 100000
@@ -124,6 +127,7 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         risco = "Médio"
     else:
         risco = "Baixo"
+        
 
     return {
         "cep": cep_limpo,
