@@ -58,39 +58,24 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     if not municipio or not uf:
         return {"erro": "CEP não encontrado."}
 
-    # 2. Crime Brasil
+        # 2. Crime Brasil (chiamata singola, senza bairro, per evitare rate limit)
     try:
         base_url = "https://crimebrasil.com.br/api/location-stats"
-        
-        # Tentativo 1: con bairro (se presente)
         params = {
             "state": uf,
             "municipio": _normalize_text(municipio),
             "ultimos_meses": 12
         }
-        if bairro:
-            params["bairro"] = _normalize_text(bairro)
-        
         resp_crime = requests.get(base_url, params=params, timeout=15)
-        dados = resp_crime.json() if resp_crime.status_code == 200 else {}
+        resp_crime.raise_for_status()
+        dados = resp_crime.json()
         
-        # Tentativo 2: senza bairro (fallback comunale)
         if not dados or dados.get("total", 0) == 0:
-            params_fallback = {
-                "state": uf,
-                "municipio": _normalize_text(municipio),
-                "ultimos_meses": 12
-            }
-            resp_crime = requests.get(base_url, params=params_fallback, timeout=15)
-            resp_crime.raise_for_status()
-            dados = resp_crime.json()
-        
-        if not dados:
-            return {"erro": "Nenhum dado de criminalidade encontrado para esta localidade."}
+            return {"erro": "Nenhum dado de criminalidade encontrado para este município."}
             
     except Exception as e:
         return {"erro": f"Falha ao consultar Crime Brasil: {str(e)}"}
-
+    
     # 3. População: usa a API SIDRA do IBGE (mais simples e confiável)
     populacao = None
     if ibge_code:
@@ -129,7 +114,6 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         risco = "Baixo"
 
     return {
-        "debug_version": "v2",  # <-- AGGIUNGI QUESTA RIGA
         "cep": cep_limpo,
         "localidade": {
             "municipio": municipio,
