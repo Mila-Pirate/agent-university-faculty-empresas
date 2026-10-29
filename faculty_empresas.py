@@ -1,4 +1,5 @@
 from fastmcp import FastMCP
+from fastmcp.server.context import Context
 from apipj import Apipj, cnpj_valido, normalizar_cnpj
 
 # Inizializza il server MCP con il nome della tua Università
