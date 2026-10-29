@@ -61,18 +61,39 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     except Exception as e:
         return {"erro": f"Falha ao consultar Crime Brasil: {str(e)}"}
 
-    # 4. Calcula o índice de risco
-        total = dados.get("total", 0)
-    populacao = dados.get("population")
+    # 4. Obtém a população do IBGE (fonte oficial) usando o código do município
+    ibge_code = endereco.get("ibge")
+    populacao = None
+    
+    if ibge_code:
+        try:
+            # API de agregados do IBGE: população residente (variável 93 do agregado 4714)
+            ibge_url = f"https://servicodados.ibge.gov.br/api/v3/agregados/4714/periodos/2022/variaveis/93?localidades=N6[{ibge_code}]"
+            resp_ibge = requests.get(ibge_url, timeout=10)
+            if resp_ibge.status_code == 200:
+                ibge_data = resp_ibge.json()
+                if ibge_data and len(ibge_data) > 0:
+                    series = ibge_data[0].get("resultados", [{}])[0].get("series", [{}])[0]
+                    populacao_str = series.get("serie", {}).get("2022")
+                    if populacao_str:
+                        populacao = int(populacao_str)
+        except Exception:
+            pass  # Se o IBGE falhar, tentamos o fallback abaixo
+    
+    # Fallback: usa a população do Crime Brasil, se disponível
+    if not populacao:
+        populacao = dados.get("population")
     
     if not populacao or populacao == 0:
-        return {"erro": "População não disponível para esta localidade. Tente outro CEP ou município."}
+        return {"erro": "População não disponível para esta localidade. Tente outro CEP."}
 
+    # 5. Calcula o índice de risco
+    total = dados.get("total", 0)
+    
     # Taxa por 100k habitantes
     taxa_100k = (total / populacao) * 100000
 
     # Define o índice (soglia baseada em médias nacionais aproximadas)
-    # Isso é uma heurística inicial, que pode ser refinada depois.
     if taxa_100k > 5000:
         risco = "Alto"
     elif taxa_100k > 2000:
@@ -80,7 +101,7 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     else:
         risco = "Baixo"
 
-    # 5. Estrutura a resposta
+    # 6. Estrutura a resposta
     return {
         "cep": cep_limpo,
         "localidade": {
@@ -88,13 +109,13 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
             "uf": uf,
             "bairro": bairro,
             "populacao": populacao,
-            "fonte_populacao": dados.get("population_source")
+            "fonte_populacao": "IBGE Censo 2022" if ibge_code else dados.get("population_source")
         },
         "periodo": "Últimos 12 meses",
         "total_crimes": total,
         "taxa_por_100k_habitantes": round(taxa_100k, 2),
         "indice_risco": risco,
-        "tipos_de_crime_mais_comuns": dados.get("crime_types", [])[:5],  # Top 5
+        "tipos_de_crime_mais_comuns": dados.get("crime_types", [])[:5],
         "nota": "Dados agregados. O nível de detalhe (bairro vs. município) depende da fonte oficial."
     }
 
