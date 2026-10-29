@@ -16,84 +16,102 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     Retorna um índice de risco (Alto/Medio/Basso), taxa por 100k habitantes,
     e os tipos de crime mais comuns na região.
     """
-    # 1. Valida e limpa o CEP
     cep_limpo = ''.join(filter(str.isdigit, cep))
     if len(cep_limpo) != 8:
         return {"erro": "CEP inválido. Deve conter 8 dígitos."}
 
-    # 2. Busca localidade via ViaCEP (gratuito, sem chave)
+    # 1. BrasilAPI: obtém endereço E código IBGE (sempre presente)
+    ibge_code = None
+    municipio = None
+    uf = None
+    bairro = None
     try:
-        viacep_url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
-        resp = requests.get(viacep_url, timeout=10)
-        resp.raise_for_status()
-        endereco = resp.json()
-        if "erro" in endereco:
-            return {"erro": "CEP não encontrado no ViaCEP."}
-    except Exception as e:
-        return {"erro": f"Falha ao consultar ViaCEP: {str(e)}"}
+        brasilapi_url = f"https://brasilapi.com.br/api/cep/v1/{cep_limpo}"
+        resp = requests.get(brasilapi_url, timeout=10)
+        if resp.status_code == 200:
+            endereco = resp.json()
+            municipio = endereco.get("city")
+            uf = endereco.get("state")
+            bairro = endereco.get("neighborhood")
+            ibge_code = endereco.get("city_ibge")  # BrasilAPI usa "city_ibge"
+    except Exception:
+        pass
 
-    municipio = endereco.get("localidade")
-    uf = endereco.get("uf")
-    bairro = endereco.get("bairro")
+    # Fallback: ViaCEP se BrasilAPI falhar
+    if not ibge_code:
+        try:
+            viacep_url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
+            resp = requests.get(viacep_url, timeout=10)
+            resp.raise_for_status()
+            endereco = resp.json()
+            if "erro" not in endereco:
+                municipio = endereco.get("localidade")
+                uf = endereco.get("uf")
+                bairro = endereco.get("bairro")
+                ibge_code = endereco.get("ibge")
+        except Exception:
+            pass
 
-    # 3. Consulta Crime Brasil
+    if not municipio or not uf:
+        return {"erro": "CEP não encontrado."}
+
+    # 2. Crime Brasil
     try:
-        # Monta a URL com os parâmetros
         base_url = "https://crimebrasil.com.br/api/location-stats"
         params = {
             "state": uf,
-            "municipio": _normalize_text(municipio),
+            "municipio": municipio.strip().upper().replace(" ", "+"),
             "ultimos_meses": 12
         }
         if bairro:
-            params["bairro"] = _normalize_text(bairro)
+            params["bairro"] = bairro.strip().upper().replace(" ", "+")
 
         resp_crime = requests.get(base_url, params=params, timeout=15)
-        
-        # Se a API retornar 404 ou erro, tentamos sem o bairro (fallback municipal)
         if resp_crime.status_code != 200 and bairro:
             params.pop("bairro")
             resp_crime = requests.get(base_url, params=params, timeout=15)
-        
         resp_crime.raise_for_status()
         dados = resp_crime.json()
-        
     except Exception as e:
         return {"erro": f"Falha ao consultar Crime Brasil: {str(e)}"}
 
-    # 4. Obtém a população do IBGE (fonte oficial) usando o código do município
-    ibge_code = endereco.get("ibge")
-    populacao = None
+    total = dados.get("total", 0)
     
+    # 3. População: IBGE via código (formato correto da API v3)
+    populacao = None
     if ibge_code:
         try:
-            # API de agregados do IBGE: população residente (variável 93 do agregado 4714)
-            ibge_url = f"https://servicodados.ibge.gov.br/api/v3/agregados/4714/periodos/2022/variaveis/93?localidades=N6[{ibge_code}]"
+            # API v3: agregado 4714 (Censo 2022), variável 93 (população residente)
+            # Localidade N6 = município
+            ibge_url = (
+                f"https://servicodados.ibge.gov.br/api/v3/agregados/4714/"
+                f"periodos/2022/variaveis/93?localidades=N6[{ibge_code}]"
+            )
             resp_ibge = requests.get(ibge_url, timeout=10)
             if resp_ibge.status_code == 200:
                 ibge_data = resp_ibge.json()
+                # Estrutura: [{resultados: [{series: [{serie: {"2022": "1332845"}}]}]}]
                 if ibge_data and len(ibge_data) > 0:
-                    series = ibge_data[0].get("resultados", [{}])[0].get("series", [{}])[0]
-                    populacao_str = series.get("serie", {}).get("2022")
-                    if populacao_str:
-                        populacao = int(populacao_str)
+                    resultados = ibge_data[0].get("resultados", [])
+                    if resultados and len(resultados) > 0:
+                        series = resultados[0].get("series", [])
+                        if series and len(series) > 0:
+                            serie = series[0].get("serie", {})
+                            pop_str = serie.get("2022")
+                            if pop_str and pop_str not in ("-", "..", "..."):
+                                populacao = int(pop_str)
         except Exception:
-            pass  # Se o IBGE falhar, tentamos o fallback abaixo
-    
-    # Fallback: usa a população do Crime Brasil, se disponível
+            pass
+
+    # Fallback: população do Crime Brasil
     if not populacao:
         populacao = dados.get("population")
-    
+
     if not populacao or populacao == 0:
         return {"erro": "População não disponível para esta localidade. Tente outro CEP."}
 
-    # 5. Calcula o índice de risco
-    total = dados.get("total", 0)
-    
-    # Taxa por 100k habitantes
+    # 4. Índice de risco
     taxa_100k = (total / populacao) * 100000
-
-    # Define o índice (soglia baseada em médias nacionais aproximadas)
     if taxa_100k > 5000:
         risco = "Alto"
     elif taxa_100k > 2000:
@@ -101,7 +119,6 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     else:
         risco = "Baixo"
 
-    # 6. Estrutura a resposta
     return {
         "cep": cep_limpo,
         "localidade": {
