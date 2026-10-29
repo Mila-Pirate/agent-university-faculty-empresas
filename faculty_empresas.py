@@ -21,8 +21,8 @@ except ImportError:
 mcp = FastMCP("Agent University - Faculty of Brazilian Companies")
 
 # --- STRUMENTO 1: Cerca un'azienda per CNPJ (CON PAYWALL) ---
-@mcp.tool()
 @paywall(price="0.01", description="Dati CNPJ con provenienza verificata")
+@mcp.tool()
 async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
     """
     Busca dados cadastrais de uma empresa brasileira pelo CNPJ.
