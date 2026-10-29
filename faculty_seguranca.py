@@ -20,11 +20,12 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     if len(cep_limpo) != 8:
         return {"erro": "CEP inválido. Deve conter 8 dígitos."}
 
-    # 1. BrasilAPI: obtém endereço E código IBGE (sempre presente)
     ibge_code = None
     municipio = None
     uf = None
     bairro = None
+
+    # 1. BrasilAPI: obtém endereço E código IBGE (sempre presente)
     try:
         brasilapi_url = f"https://brasilapi.com.br/api/cep/v1/{cep_limpo}"
         resp = requests.get(brasilapi_url, timeout=10)
@@ -33,11 +34,14 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
             municipio = endereco.get("city")
             uf = endereco.get("state")
             bairro = endereco.get("neighborhood")
-            ibge_code = endereco.get("city_ibge")  # BrasilAPI usa "city_ibge"
+            # BrasilAPI restituisce il codice IBGE in un oggetto annidato: {"ibge": {"city": "4202404", "state": "42"}}
+            ibge_obj = endereco.get("ibge")
+            if isinstance(ibge_obj, dict):
+                ibge_code = ibge_obj.get("city")
     except Exception:
         pass
 
-    # Fallback: ViaCEP se BrasilAPI falhar
+    # Fallback: ViaCEP se BrasilAPI fallisce o non restituisce il codice IBGE
     if not ibge_code:
         try:
             viacep_url = f"https://viacep.com.br/ws/{cep_limpo}/json/"
@@ -60,15 +64,15 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         base_url = "https://crimebrasil.com.br/api/location-stats"
         params = {
             "state": uf,
-            "municipio": municipio.strip().upper().replace(" ", "+"),
+            "municipio": _normalize_text(municipio),
             "ultimos_meses": 12
         }
         if bairro:
-            params["bairro"] = bairro.strip().upper().replace(" ", "+")
+            params["bairro"] = _normalize_text(bairro)
 
         resp_crime = requests.get(base_url, params=params, timeout=15)
         if resp_crime.status_code != 200 and bairro:
-            params.pop("bairro")
+            params.pop("bairro", None)
             resp_crime = requests.get(base_url, params=params, timeout=15)
         resp_crime.raise_for_status()
         dados = resp_crime.json()
@@ -81,8 +85,6 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
     populacao = None
     if ibge_code:
         try:
-            # API v3: agregado 4714 (Censo 2022), variável 93 (população residente)
-            # Localidade N6 = município
             ibge_url = (
                 f"https://servicodados.ibge.gov.br/api/v3/agregados/4714/"
                 f"periodos/2022/variaveis/93?localidades=N6[{ibge_code}]"
@@ -90,7 +92,6 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
             resp_ibge = requests.get(ibge_url, timeout=10)
             if resp_ibge.status_code == 200:
                 ibge_data = resp_ibge.json()
-                # Estrutura: [{resultados: [{series: [{serie: {"2022": "1332845"}}]}]}]
                 if ibge_data and len(ibge_data) > 0:
                     resultados = ibge_data[0].get("resultados", [])
                     if resultados and len(resultados) > 0:
@@ -103,7 +104,7 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
         except Exception:
             pass
 
-    # Fallback: população do Crime Brasil
+    # Fallback: popolazione dal Crime Brasil
     if not populacao:
         populacao = dados.get("population")
 
