@@ -81,35 +81,31 @@ async def avaliar_risco_criminal_por_cep(cep: str, ctx: Context) -> dict:
 
     total = dados.get("total", 0)
     
-    # 3. População: IBGE via código (formato correto da API v3)
+        # 3. População: usa a API SIDRA do IBGE (mais simples e confiável)
     populacao = None
     if ibge_code:
         try:
-            ibge_url = (
-                f"https://servicodados.ibge.gov.br/api/v3/agregados/4714/"
-                f"periodos/2022/variaveis/93?localidades=N6[{ibge_code}]"
+            # API SIDRA: tabela 10211 (População residente), variável 93
+            # O código do município é o nível territorial N6
+            sidra_url = (
+                f"https://apisidra.ibge.gov.br/values/t/10211/n6/{ibge_code}/v/93/p/2022"
             )
-            resp_ibge = requests.get(ibge_url, timeout=10)
-            if resp_ibge.status_code == 200:
-                ibge_data = resp_ibge.json()
-                if ibge_data and len(ibge_data) > 0:
-                    resultados = ibge_data[0].get("resultados", [])
-                    if resultados and len(resultados) > 0:
-                        series = resultados[0].get("series", [])
-                        if series and len(series) > 0:
-                            serie = series[0].get("serie", {})
-                            pop_str = serie.get("2022")
-                            if pop_str and pop_str not in ("-", "..", "..."):
-                                populacao = int(pop_str)
+            resp_sidra = requests.get(sidra_url, timeout=15)
+            if resp_sidra.status_code == 200:
+                sidra_data = resp_sidra.json()
+                # A primeira linha contém os cabeçalhos; os dados começam na segunda
+                if len(sidra_data) > 1:
+                    # O valor da população está na coluna "V" (valor)
+                    linha_dados = sidra_data[1]
+                    valor_str = linha_dados.get("V")
+                    if valor_str and valor_str not in ("-", "..", "..."):
+                        populacao = int(valor_str)
         except Exception:
             pass
 
     # Fallback: popolazione dal Crime Brasil
     if not populacao:
         populacao = dados.get("population")
-
-    if not populacao or populacao == 0:
-        return {"erro": "População não disponível para esta localidade. Tente outro CEP."}
 
     # 4. Índice de risco
     taxa_100k = (total / populacao) * 100000
