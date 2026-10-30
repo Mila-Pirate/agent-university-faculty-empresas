@@ -2,23 +2,22 @@ import os
 from fastmcp import FastMCP
 from fastmcp.server.context import Context
 from apipj import Apipj, cnpj_valido, normalizar_cnpj
-from vaulls import configure, paywall
-from vaulls.integrations.fastapi import vaulls_middleware
-import uvicorn
-
-# --- CONFIGURAZIONE VAULLS ---
-# Legge il wallet dalla variabile d'ambiente VAULLS_PAY_TO (configurata su Render)
-configure(pay_to=os.getenv("VAULLS_PAY_TO"))
 
 mcp = FastMCP("Agent University - Faculty of Brazilian Companies")
 
-# --- STRUMENTO 1: Cerca un'azienda per CNPJ (CON PAYWALL) ---
 @mcp.tool()
-@paywall(price="0.01", description="Dados de CNPJ com proveniência certificada")
 async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
     """
     Busca dados cadastrais de uma empresa brasileira pelo CNPJ.
     """
+    # --- CONTROLLO PAGAMENTO (Simulato per ora) ---
+    # In futuro, qui leggerai l'header di pagamento x402.
+    # Per ora, controlliamo solo se il wallet è configurato.
+    wallet = os.getenv("VAULLS_PAY_TO")
+    if not wallet:
+        return {"erro": "Configurazione pagamento mancante sul server."}
+    
+    # --- LOGICA DI BUSINESS ---
     api_key = os.getenv("APIPJ_KEY")
     if not api_key:
         return {"erro": "Chave API apipj não configurada no servidor."}
@@ -60,15 +59,10 @@ async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
     except Exception as e:
         return {"erro": f"Falha na consulta: {str(e)}"}
 
-# --- STRUMENTO 2: Lista attività (GRATUITO, per scoperta) ---
 @mcp.tool()
 def listar_atividades_disponiveis() -> list:
     return [{"categoria": "empresas", "descricao": "Consulta de CNPJ com proveniência certificada"}]
 
-# --- AVVIO CON MIDDLEWARE VAULLS ---
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    # Crea l'app ASGI di FastMCP e la avvolge con il middleware VAULLS
-    app = mcp.http_app(transport="http", stateless_http=True)
-    app = vaulls_middleware(app)
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    mcp.run(transport="http", host="0.0.0.0", port=port, stateless_http=True)
