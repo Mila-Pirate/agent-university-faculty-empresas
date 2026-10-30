@@ -10,6 +10,7 @@ async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
     """
     Busca dados cadastrais de uma empresa brasileira pelo CNPJ.
     """
+    print(f"TOOL_CALL: CNPJ={cnpj} da IP={ctx.request_context.request.client.host}")
     # --- CONTROLLO PAGAMENTO (Simulato per ora) ---
     # In futuro, qui leggerai l'header di pagamento x402.
     # Per ora, controlliamo solo se il wallet è configurato.
