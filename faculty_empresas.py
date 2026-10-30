@@ -22,7 +22,7 @@ PayMCP(
 )
 
 @mcp.tool()
-@price(amount=0.01, currency="USD")
+@price(0.01, "USD")
 async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
     """
     Busca dados cadastrais de uma empresa brasileira pelo CNPJ.
