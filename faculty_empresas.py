@@ -17,7 +17,7 @@ mcp = FastMCP("Agent University - Faculty of Brazilian Companies")
 # Mode.X402 forza l'uso del protocollo x402 per i pagamenti on-chain
 PayMCP(
     mcp,
-    providers=[X402Provider(wallet_address=wallet_address)],
+    providers=[X402Provider(pay_to=[{"address": wallet_address}])],
     mode=Mode.X402
 )
 
