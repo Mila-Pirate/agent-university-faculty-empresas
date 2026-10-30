@@ -2,23 +2,31 @@ import os
 from fastmcp import FastMCP
 from fastmcp.server.context import Context
 from apipj import Apipj, cnpj_valido, normalizar_cnpj
+from paymcp import Mode, price, PayMCP
+from paymcp.providers import X402Provider
+
+# --- CONFIGURAZIONE PAYMCP ---
+# Il wallet è quello che hai già impostato su Render come VAULLS_PAY_TO
+wallet_address = os.getenv("VAULLS_PAY_TO") # riusa la variabile esistente
+if not wallet_address:
+    raise ValueError("Wallet address non configurato. Imposta VAULLS_PAY_TO su Render.")
 
 mcp = FastMCP("Agent University - Faculty of Brazilian Companies")
 
+# Inizializza PayMCP con il provider x402 (USDC su Base)
+# Mode.X402 forza l'uso del protocollo x402 per i pagamenti on-chain
+PayMCP(
+    mcp,
+    providers=[X402Provider(wallet_address=wallet_address)],
+    mode=Mode.X402
+)
+
 @mcp.tool()
+@price(amount=0.01, currency="USD")
 async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
     """
     Busca dados cadastrais de uma empresa brasileira pelo CNPJ.
     """
-    print(f"TOOL_CALL: CNPJ={cnpj} da IP={ctx.request_context.request.client.host}")
-    # --- CONTROLLO PAGAMENTO (Simulato per ora) ---
-    # In futuro, qui leggerai l'header di pagamento x402.
-    # Per ora, controlliamo solo se il wallet è configurato.
-    wallet = os.getenv("VAULLS_PAY_TO")
-    if not wallet:
-        return {"erro": "Configurazione pagamento mancante sul server."}
-    
-    # --- LOGICA DI BUSINESS ---
     api_key = os.getenv("APIPJ_KEY")
     if not api_key:
         return {"erro": "Chave API apipj não configurada no servidor."}
