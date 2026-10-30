@@ -1,4 +1,5 @@
 fastmcp
 apipj
 requests
-vaulls[fastapi]
+vaulls[fastapi,cdp]
+uvicorn
