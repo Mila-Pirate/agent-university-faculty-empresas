@@ -119,12 +119,62 @@ async def verificar_sancoes_ceis(cnpj: str, ctx: Context) -> dict:
     except Exception as e:
         return {"erro": f"Falha na consulta CEIS: {str(e)}"}
 
+# --- CORSO 3: SCREENING SANZIONI (CNEP) ---
+CNEP_URL = "https://portaldatransparencia.gov.br/download-de-dados/cnep"
+
+@mcp.tool()
+@price(0.02, "USD")
+async def verificar_sancoes_cnep(cnpj: str, ctx: Context) -> dict:
+    """
+    Verifica se un'azienda (CNPJ) è punita nel CNEP (Cadastro Nacional de Empresas Punidas).
+    Usa il file CSV pubblico, senza bisogno di chiave API.
+    """
+    cnpj_limpo = ''.join(filter(str.isdigit, cnpj))
+    if len(cnpj_limpo) != 14:
+        return {"erro": "CNPJ inválido. Deve conter 14 dígitos."}
+    
+    try:
+        # Scarica il CSV pubblico del CNEP
+        response = requests.get(CNEP_URL, timeout=30)
+        response.raise_for_status()
+        
+        reader = csv.DictReader(io.StringIO(response.text), delimiter=';')
+        
+        sancoes = []
+        for row in reader:
+            # La colonna del CNPJ nel CNEP si chiama "CPF/CNPJ do Sancionado"
+            cnpj_sancionado = row.get("CPF/CNPJ do Sancionado", "")
+            if cnpj_limpo in cnpj_sancionado:
+                sancoes.append({
+                    "tipo_sancao": row.get("Tipo de Sanção"),
+                    "orgao_sancionador": row.get("Órgão Sancionador"),
+                    "data_publicacao": row.get("Data Publicação"),
+                    "data_fim": row.get("Data Final"),
+                    "valor_multa": row.get("Valor da Multa")
+                })
+        
+        return {
+            "dado": {
+                "cnpj": cnpj_limpo,
+                "sancionada": len(sancoes) > 0,
+                "total_sancoes": len(sancoes),
+                "sancoes": sancoes
+            },
+            "provenienza": {
+                "fonte_primaria": "CGU - Portal da Transparência (CNEP)",
+                "livello_certificazione": "L1 - Fonte governativa oficial",
+                "nota": "Dados extraídos do arquivo CSV público e filtrados por CNPJ."
+            }
+        }
+    except Exception as e:
+        return {"erro": f"Falha na consulta CNEP: {str(e)}"}
+    
 # --- TOOL GRATUITO: SCOPERTA ---
 @mcp.tool()
 def listar_atividades_disponiveis() -> list:
     return [
         {"categoria": "empresas", "descricao": "Consulta de CNPJ com proveniência certificada"},
-        {"categoria": "compliance", "descricao": "Verificação de sanções (CEIS)"}
+        {"categoria": "compliance", "descricao": "Verificação de sanções (CEIS e CNEP)"}
     ]
 
 if __name__ == "__main__":
