@@ -1,0 +1,12 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.Mila-Pirate/agent-university-empresas",
+  "description": "Brazilian CNPJ lookup & CEIS sanctions screening. Certified data, pay-per-call via x402.",
+  "version": "1.3.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://agent-university-empresas.onrender.com/mcp"
+    }
+  ]
+}
