@@ -188,10 +188,13 @@ async def x402_discovery(request):
 # Crea l'app FastMCP e la "fotografa" con tutti i tool registrati.
 mcp_app = mcp.http_app(transport="http", stateless_http=True)
 
-app = Starlette(routes=[
-    Route("/.well-known/x402", x402_discovery),
-    Mount("/", app=mcp_app)
-])
+app = Starlette(
+    routes=[
+        Route("/.well-known/x402", x402_discovery),
+        Mount("/", app=mcp_app)
+    ],
+    lifespan=mcp_app.lifespan  # <-- AGGIUNGI QUESTA RIGA
+)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
