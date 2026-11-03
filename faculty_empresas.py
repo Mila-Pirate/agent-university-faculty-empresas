@@ -12,16 +12,25 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route, Mount
 
-# --- CONFIGURAZIONE PAYMCP ---
+# --- CONFIGURAZIONE PAYMCP (CORRETTA) ---
 wallet_address = os.getenv("VAULLS_PAY_TO")
 if not wallet_address:
     raise ValueError("Wallet address non configurato. Imposta VAULLS_PAY_TO su Render.")
 
 mcp = FastMCP("Agent University - Faculty of Brazilian Companies")
 
+# Inizializza PayMCP con il Facilitator per la verifica crittografica
 PayMCP(
     mcp,
-    providers=[X402Provider(pay_to=[{"address": wallet_address}])],
+    providers=[
+        X402Provider(
+            pay_to=[{"address": wallet_address}],
+            # URL del facilitator pubblico per la verifica dei pagamenti su Base
+            facilitator_url="https://x402.org/facilitator",
+            # Assicura che non accetti pagamenti in modalità test
+            testnet=False
+        )
+    ],
     mode=Mode.X402
 )
 
@@ -42,23 +51,31 @@ async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
         if empresa is None:
             return {"erro": "CNPJ não encontrado."}
         
+        # Costruzione sicura del dizionario (evita problemi di encoding)
+        socios_list = []
+        for s in empresa.get("socios", []):
+            socios_list.append({
+                "nome": str(s.get("nome", "")).encode('utf-8', errors='ignore').decode('utf-8'),
+                "qualificacao": s.get("qualificacao")
+            })
+        
         return {
             "dado": {
                 "cnpj": empresa.get("cnpj"),
-                "razao_social": empresa.get("razao_social"),
-                "nome_fantasia": empresa.get("nome_fantasia"),
+                "razao_social": str(empresa.get("razao_social", "")).encode('utf-8', errors='ignore').decode('utf-8'),
+                "nome_fantasia": str(empresa.get("nome_fantasia", "")).encode('utf-8', errors='ignore').decode('utf-8'),
                 "situacao_cadastral": empresa.get("situacao_cadastral", {}).get("descricao"),
                 "data_inicio_atividade": empresa.get("data_inicio_atividade"),
                 "endereco": {
-                    "logradouro": empresa.get("endereco", {}).get("logradouro"),
+                    "logradouro": str(empresa.get("endereco", {}).get("logradouro", "")).encode('utf-8', errors='ignore').decode('utf-8'),
                     "numero": empresa.get("endereco", {}).get("numero"),
-                    "municipio": empresa.get("endereco", {}).get("municipio", {}).get("nome"),
+                    "municipio": str(empresa.get("endereco", {}).get("municipio", {}).get("nome", "")).encode('utf-8', errors='ignore').decode('utf-8'),
                     "uf": empresa.get("endereco", {}).get("uf"),
                     "cep": empresa.get("endereco", {}).get("cep")
                 },
-                "atividade_principal": empresa.get("cnae_principal", {}).get("descricao"),
+                "atividade_principal": str(empresa.get("cnae_principal", {}).get("descricao", "")).encode('utf-8', errors='ignore').decode('utf-8'),
                 "capital_social": empresa.get("capital_social"),
-                "socios": [{"nome": s.get("nome"), "qualificacao": s.get("qualificacao")} for s in empresa.get("socios", [])]
+                "socios": socios_list
             },
             "provenienza": {
                 "fonte_primaria": "Receita Federal do Brasil (via apipj)",
@@ -206,9 +223,7 @@ async def x402_discovery(request):
         "links": {"documentation": "https://github.com/Mila-Pirate/agent-university-empresas"}
     })
 
-# --- APP STARLETTE (Unisce .well-known e MCP) ---
-# Questa riga DEVE essere l'ultima prima dell'avvio.
-# Crea l'app FastMCP e la "fotografa" con tutti i tool registrati.
+# --- APP STARLETTE ---
 mcp_app = mcp.http_app(transport="http", stateless_http=True)
 
 app = Starlette(
@@ -216,7 +231,7 @@ app = Starlette(
         Route("/.well-known/x402", x402_discovery),
         Mount("/", app=mcp_app)
     ],
-    lifespan=mcp_app.lifespan  # <-- AGGIUNGI QUESTA RIGA
+    lifespan=mcp_app.lifespan
 )
 
 if __name__ == "__main__":
