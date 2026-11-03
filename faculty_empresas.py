@@ -25,8 +25,8 @@ PayMCP(
     providers=[
         X402Provider(
             pay_to=[{"address": wallet_address}],
-            # URL del facilitator pubblico per la verifica dei pagamenti su Base
-            facilitator_url="https://x402.org/facilitator",
+            # Usa 'facilitator' (non 'facilitator_url')
+            facilitator={"url": "https://x402.org/facilitator"},
             # Assicura che non accetti pagamenti in modalità test
             testnet=False
         )
