@@ -2,11 +2,15 @@ import os
 import csv
 import io
 import requests
+import uvicorn
 from fastmcp import FastMCP
 from fastmcp.server.context import Context
 from apipj import Apipj, cnpj_valido, normalizar_cnpj
 from paymcp import Mode, price, PayMCP
 from paymcp.providers import X402Provider
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route, Mount
 
 # --- CONFIGURAZIONE PAYMCP ---
 wallet_address = os.getenv("VAULLS_PAY_TO")
@@ -66,33 +70,22 @@ async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
         return {"erro": f"Falha na consulta: {str(e)}"}
 
 # --- CORSO 2: SCREENING SANZIONI (CEIS) ---
-# URL del file CSV pubblico del CEIS (Portal da Transparência)
 CEIS_URL = "https://portaldatransparencia.gov.br/download-de-dados/ceis"
 
 @mcp.tool()
 @price(0.02, "USD")
 async def verificar_sancoes_ceis(cnpj: str, ctx: Context) -> dict:
-    """
-    Verifica se un'azienda (CNPJ) è sanzionata nel CEIS.
-    Scarica il file CSV pubblico e cerca il CNPJ.
-    """
     cnpj_limpo = ''.join(filter(str.isdigit, cnpj))
     if len(cnpj_limpo) != 14:
         return {"erro": "CNPJ inválido. Deve conter 14 dígitos."}
     
     try:
-        # Scarica il CSV (il file è pubblico, non richiede chiave)
-        # Nota: il download è pesante (decine di MB), quindi lo facciamo in memoria.
         response = requests.get(CEIS_URL, timeout=30)
         response.raise_for_status()
-        
-        # Legge il CSV
-        # Il separatore è il punto e virgola (;)
         reader = csv.DictReader(io.StringIO(response.text), delimiter=';')
         
         sancoes = []
         for row in reader:
-            # La colonna del CNPJ potrebbe chiamarsi "CPF/CNPJ do Sancionado"
             cnpj_sancionado = row.get("CPF/CNPJ do Sancionado", "")
             if cnpj_limpo in cnpj_sancionado:
                 sancoes.append({
@@ -125,24 +118,17 @@ CNEP_URL = "https://portaldatransparencia.gov.br/download-de-dados/cnep"
 @mcp.tool()
 @price(0.02, "USD")
 async def verificar_sancoes_cnep(cnpj: str, ctx: Context) -> dict:
-    """
-    Verifica se un'azienda (CNPJ) è punita nel CNEP (Cadastro Nacional de Empresas Punidas).
-    Usa il file CSV pubblico, senza bisogno di chiave API.
-    """
     cnpj_limpo = ''.join(filter(str.isdigit, cnpj))
     if len(cnpj_limpo) != 14:
         return {"erro": "CNPJ inválido. Deve conter 14 dígitos."}
     
     try:
-        # Scarica il CSV pubblico del CNEP
         response = requests.get(CNEP_URL, timeout=30)
         response.raise_for_status()
-        
         reader = csv.DictReader(io.StringIO(response.text), delimiter=';')
         
         sancoes = []
         for row in reader:
-            # La colonna del CNPJ nel CNEP si chiama "CPF/CNPJ do Sancionado"
             cnpj_sancionado = row.get("CPF/CNPJ do Sancionado", "")
             if cnpj_limpo in cnpj_sancionado:
                 sancoes.append({
@@ -168,7 +154,7 @@ async def verificar_sancoes_cnep(cnpj: str, ctx: Context) -> dict:
         }
     except Exception as e:
         return {"erro": f"Falha na consulta CNEP: {str(e)}"}
-    
+
 # --- TOOL GRATUITO: SCOPERTA ---
 @mcp.tool()
 def listar_atividades_disponiveis() -> list:
@@ -177,6 +163,36 @@ def listar_atividades_disponiveis() -> list:
         {"categoria": "compliance", "descricao": "Verificação de sanções (CEIS e CNEP)"}
     ]
 
+# --- DISCOVERY X402 (.well-known) ---
+async def x402_discovery(request):
+    wallet = os.getenv("VAULLS_PAY_TO")
+    return JSONResponse({
+        "name": "Agent University - Brazilian Company Data",
+        "description": "Certified Brazilian CNPJ & sanctions data for AI agents.",
+        "version": "1.4.0",
+        "network": {"chainId": 8453, "currency": "USDC"},
+        "payTo": wallet,
+        "resources": [
+            {
+                "method": "POST",
+                "path": "/mcp",
+                "description": "MCP endpoint with tools: buscar_empresa_por_cnpj, verificar_sancoes_ceis, verificar_sancoes_cnep",
+                "price": "variable"
+            }
+        ],
+        "links": {"documentation": "https://github.com/Mila-Pirate/agent-university-empresas"}
+    })
+
+# --- APP STARLETTE (Unisce .well-known e MCP) ---
+# Questa riga DEVE essere l'ultima prima dell'avvio.
+# Crea l'app FastMCP e la "fotografa" con tutti i tool registrati.
+mcp_app = mcp.http_app(transport="http", stateless_http=True)
+
+app = Starlette(routes=[
+    Route("/.well-known/x402", x402_discovery),
+    Mount("/", app=mcp_app)
+])
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    mcp.run(transport="http", host="0.0.0.0", port=port, stateless_http=True)
+    uvicorn.run(app, host="0.0.0.0", port=port)
