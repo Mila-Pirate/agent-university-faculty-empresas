@@ -26,9 +26,7 @@ PayMCP(
         X402Provider(
             pay_to=[{"address": wallet_address}],
             # Usa 'facilitator' (non 'facilitator_url')
-            facilitator={"url": "https://x402.org/facilitator"},
-            # Assicura che non accetti pagamenti in modalità test
-            testnet=False
+            facilitator={"url": "https://x402.org/facilitator"}
         )
     ],
     mode=Mode.X402
@@ -51,7 +49,6 @@ async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
         if empresa is None:
             return {"erro": "CNPJ não encontrado."}
         
-        # Costruzione sicura del dizionario (evita problemi di encoding)
         socios_list = []
         for s in empresa.get("socios", []):
             socios_list.append({
