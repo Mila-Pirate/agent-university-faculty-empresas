@@ -158,9 +158,32 @@ async def verificar_sancoes_cnep(cnpj: str, ctx: Context) -> dict:
 # --- TOOL GRATUITO: SCOPERTA ---
 @mcp.tool()
 def listar_atividades_disponiveis() -> list:
+    """
+    Lista os serviços disponíveis nesta universidade.
+    Use esta ferramenta para descobrir qual ferramenta paga chamar para obter os dados.
+    """
     return [
-        {"categoria": "empresas", "descricao": "Consulta de CNPJ com proveniência certificada"},
-        {"categoria": "compliance", "descricao": "Verificação de sanções (CEIS e CNEP)"}
+        {
+            "categoria": "empresas",
+            "descricao": "Consulta de CNPJ com proveniência certificada (Receita Federal).",
+            "ferramenta_recomendada": "buscar_empresa_por_cnpj",
+            "custo": "$0.01 USD por chamada",
+            "quando_usar": "Use quando precisar de dados cadastrais básicos de uma empresa."
+        },
+        {
+            "categoria": "compliance_ceis",
+            "descricao": "Verificação de sanções no CEIS (CGU).",
+            "ferramenta_recomendada": "verificar_sancoes_ceis",
+            "custo": "$0.02 USD por chamada",
+            "quando_usar": "Use quando precisar saber se uma empresa está impedida de contratar com o governo."
+        },
+        {
+            "categoria": "compliance_cnep",
+            "descricao": "Verificação de punições no CNEP (Lei Anticorrupção).",
+            "ferramenta_recomendada": "verificar_sancoes_cnep",
+            "custo": "$0.02 USD por chamada",
+            "quando_usar": "Use quando precisar saber se uma empresa foi punida por corrupção."
+        }
     ]
 
 # --- DISCOVERY X402 (.well-known) ---
