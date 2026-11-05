@@ -304,7 +304,7 @@ app = Starlette(
         Route("/.well-known/x402", x402_discovery),
         Route("/llms.txt", llms_txt),
         Route("/agents.json", agents_json),
-        Route("/mcp/server-card.json", mcp_server_card), # <-- CAMBIATO QUI
+        Route("/mcp/server-card.json", mcp_server_card), # <-- PERCORSO SEMPLICE
         Mount("/", app=mcp_app)
     ],
     lifespan=mcp_app.lifespan
