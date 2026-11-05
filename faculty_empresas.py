@@ -315,9 +315,7 @@ app = Starlette(
         Route("/.well-known/x402", x402_discovery),
         Route("/llms.txt", llms_txt),
         Route("/agents.json", agents_json),
-        Route("/.well-known/mcp.json", mcp_server_card),
-        Route("/.well-known/mcp/server-card.json", mcp_server_card),
-        Mount("/mcp", app=mcp_app)  # <-- Mount su "/mcp", non su "/"
+        Mount("/", app=mcp_app)  # <-- Mount su "/"
     ],
     lifespan=mcp_app.lifespan
 )
