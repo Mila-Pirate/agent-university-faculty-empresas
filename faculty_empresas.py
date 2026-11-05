@@ -9,7 +9,7 @@ from apipj import Apipj, cnpj_valido, normalizar_cnpj
 from paymcp import Mode, price, PayMCP
 from paymcp.providers import X402Provider
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route, Mount
 
 # --- CONFIGURAZIONE PAYMCP (CORRETTA) ---
@@ -206,7 +206,7 @@ async def x402_discovery(request):
     return JSONResponse({
         "name": "Agent University - Brazilian Company Data",
         "description": "Certified Brazilian CNPJ & sanctions data for AI agents.",
-        "version": "1.4.0",
+        "version": "1.5.0",
         "network": {"chainId": 8453, "currency": "USDC"},
         "payTo": wallet,
         "resources": [
@@ -220,12 +220,92 @@ async def x402_discovery(request):
         "links": {"documentation": "https://github.com/Mila-Pirate/agent-university-empresas"}
     })
 
+# ... (dopo la funzione x402_discovery e prima di mcp_app = ...) ...
+
+# --- LLMS.TXT ---
+async def llms_txt(request):
+    content = """# Agent University - Brazilian Company Data
+
+> Certified Brazilian company data and sanctions screening for AI agents. Pay-per-call via x402.
+
+This server provides structured, certified data from official Brazilian government sources. Agents can verify company registration and screen for sanctions.
+
+## Available Tools
+
+- [CNPJ Lookup](https://agent-university-empresas.onrender.com/mcp): Get company registration data from Receita Federal.
+- [CEIS Screening](https://agent-university-empresas.onrender.com/mcp): Check if a company is suspended from public contracts.
+- [CNEP Screening](https://agent-university-empresas.onrender.com/mcp): Check for anti-corruption punishments.
+
+## Documentation
+
+- [GitHub Repository](https://github.com/Mila-Pirate/agent-university-empresas): Source code and full documentation.
+"""
+    return PlainTextResponse(content)
+
+# --- AGENTS.JSON ---
+async def agents_json(request):
+    return JSONResponse({
+        "version": "1.0",
+        "name": "Agent University - Brazilian Company Data",
+        "description": "Certified Brazilian company data and sanctions screening.",
+        "skills": [
+            {
+                "id": "cnpj_lookup",
+                "name": "CNPJ Lookup",
+                "description": "Get company registration data from Receita Federal.",
+                "endpoint": "https://agent-university-empresas.onrender.com/mcp",
+                "method": "POST",
+                "pricing": {"model": "per_call", "amount": "0.01", "currency": "USD"}
+            },
+            {
+                "id": "ceis_screening",
+                "name": "CEIS Sanctions Screening",
+                "description": "Check if a company is suspended from public contracts.",
+                "endpoint": "https://agent-university-empresas.onrender.com/mcp",
+                "method": "POST",
+                "pricing": {"model": "per_call", "amount": "0.02", "currency": "USD"}
+            },
+            {
+                "id": "cnep_screening",
+                "name": "CNEP Sanctions Screening",
+                "description": "Check for anti-corruption punishments.",
+                "endpoint": "https://agent-university-empresas.onrender.com/mcp",
+                "method": "POST",
+                "pricing": {"model": "per_call", "amount": "0.02", "currency": "USD"}
+            }
+        ]
+    })
+
+# --- MCP SERVER CARD ---
+async def mcp_server_card(request):
+    return JSONResponse({
+        "name": "agent-university-empresas",
+        "description": "Certified Brazilian CNPJ & sanctions data for AI agents.",
+        "version": "1.5.0",
+        "author": "Mila-Pirate",
+        "repository": "https://github.com/Mila-Pirate/agent-university-empresas",
+        "tools": [
+            {"name": "buscar_empresa_por_cnpj", "description": "Get company registration data from Receita Federal."},
+            {"name": "verificar_sancoes_ceis", "description": "Check CEIS sanctions."},
+            {"name": "verificar_sancoes_cnep", "description": "Check CNEP punishments."},
+            {"name": "listar_atividades_disponiveis", "description": "List available tools and prices."}
+        ],
+        "categories": ["brazil", "compliance", "company-data", "sanctions"],
+        "pricing": "paid",
+        "auth_required": false,
+        "transport": "http"
+    })
+
 # --- APP STARLETTE ---
 mcp_app = mcp.http_app(transport="http", stateless_http=True)
 
 app = Starlette(
     routes=[
         Route("/.well-known/x402", x402_discovery),
+        Route("/llms.txt", llms_txt),
+        Route("/agents.json", agents_json),
+        Route("/.well-known/mcp-server-card.json", mcp_server_card), # Percorso principale
+        Route("/.well-known/mcp/server-card.json", mcp_server_card), # Percorso alternativo SEP-1649
         Mount("/", app=mcp_app)
     ],
     lifespan=mcp_app.lifespan
