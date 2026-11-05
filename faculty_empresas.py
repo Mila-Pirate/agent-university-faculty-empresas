@@ -297,15 +297,27 @@ async def mcp_server_card(request):
     })
 
 # --- APP STARLETTE ---
-mcp_app = mcp.http_app(transport="http", stateless_http=True)
+# --- APP FINALE (Senza Mount("/")) ---
+# Crea l'app FastMCP passando le rotte personalizzate direttamente a http_app()
+mcp_app = mcp.http_app(
+    transport="http", 
+    stateless_http=True,
+    # FastMCP accetta un parametro 'routes' per le rotte extra
+    # (o le registra automaticamente se usi @mcp.custom_route)
+)
+
+# Se http_app() non accetta 'routes', usa questo approccio:
+# Crea l'app Starlette SENZA Mount("/"), ma montando il server MCP su un percorso specifico
+from starlette.routing import Route, Mount
 
 app = Starlette(
     routes=[
         Route("/.well-known/x402", x402_discovery),
         Route("/llms.txt", llms_txt),
         Route("/agents.json", agents_json),
-        Route("/.well-known/mcp/server-card.json", mcp_server_card),  # <-- ROUTE NORMALE
-        Mount("/", app=mcp_app)
+        Route("/.well-known/mcp.json", mcp_server_card),
+        Route("/.well-known/mcp/server-card.json", mcp_server_card),
+        Mount("/", app=mcp_app)  # <-- TORNA A "/"
     ],
     lifespan=mcp_app.lifespan
 )
