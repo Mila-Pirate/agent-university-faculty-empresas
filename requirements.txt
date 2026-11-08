@@ -2,3 +2,4 @@ fastmcp
 apipj
 requests
 paymcp
+feedparser

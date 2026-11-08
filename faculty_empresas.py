@@ -3,6 +3,8 @@ import csv
 import io
 import requests
 import uvicorn
+import feedparser
+from datetime import datetime
 from fastmcp import FastMCP
 from fastmcp.server.context import Context
 from apipj import Apipj, cnpj_valido, normalizar_cnpj
@@ -169,6 +171,65 @@ async def verificar_sancoes_cnep(cnpj: str, ctx: Context) -> dict:
     except Exception as e:
         return {"erro": f"Falha na consulta CNEP: {str(e)}"}
 
+# --- CORSO 4: NOTIZIE CERTIFICATE (AGÊNCIA BRASIL) ---
+AGENCIA_BRASIL_RSS = "https://agenciabrasil.ebc.com.br/rss/{editoria}/feed.xml"
+EDITORIAS_VALIDAS = [
+    "geral", "politica", "economia", "justica", "educacao",
+    "saude", "internacional", "esportes", "direitos-humanos"
+]
+
+@mcp.tool()
+@price(0.01, "USD")
+async def resumo_noticias_brasil(editoria: str = "geral", limite: int = 5, ctx: Context = None) -> dict:
+    """
+    Retorna as últimas notícias da Agência Brasil (EBC) por editoria.
+    Fonte oficial do governo brasileiro. Sem chave de API.
+    """
+    editoria = editoria.strip().lower()
+    if editoria not in EDITORIAS_VALIDAS:
+        return {"erro": f"Editoria inválida. Use: {', '.join(EDITORIAS_VALIDAS)}"}
+    
+    limite = max(1, min(limite, 20))
+    url = AGENCIA_BRASIL_RSS.format(editoria=editoria)
+    
+    try:
+        # Usa feedparser per leggere il feed RSS (tollerante a XML malformato)
+        feed = feedparser.parse(url)
+        
+        if feed.bozo:
+            # bozo=1 significa che il feed ha problemi di formato, ma potremmo comunque avere entries
+            pass
+        
+        entries = feed.entries[:limite]
+        if not entries:
+            return {"erro": f"Nenhuma notícia encontrada para a editoria '{editoria}'."}
+        
+        notizie = []
+        for e in entries:
+            # feedparser normalizza i campi: title, link, published, summary
+            notizie.append({
+                "titulo": e.get("title", ""),
+                "link": e.get("link", ""),
+                "data_publicacao": e.get("published", ""),
+                "resumo": e.get("summary", "")[:500],  # Limita a 500 caratteri
+                "fonte": "Agência Brasil (EBC)"
+            })
+        
+        return {
+            "dado": {
+                "editoria": editoria,
+                "total_retornado": len(notizie),
+                "notizie": notizie
+            },
+            "provenienza": {
+                "fonte_primaria": "Agência Brasil (EBC) - Agência de Notícias do Governo Federal",
+                "livello_certificazione": "L1 - Fonte governativa oficial",
+                "nota": "Feed RSS público, sem necessidade de chave API. Dados em tempo real."
+            }
+        }
+    except Exception as e:
+        return {"erro": f"Falha ao consultar Agência Brasil: {str(e)}"}
+
 # --- TOOL GRATUITO: SCOPERTA ---
 @mcp.tool()
 def listar_atividades_disponiveis() -> list:
@@ -197,6 +258,13 @@ def listar_atividades_disponiveis() -> list:
             "ferramenta_recomendada": "verificar_sancoes_cnep",
             "custo": "$0.02 USD por chamada",
             "quando_usar": "Use quando precisar saber se uma empresa foi punida por corrupção."
+        }
+        {
+            "categoria": "notizie",
+            "descricao": "Últimas notícias da Agência Brasil (EBC) por editoria.",
+            "ferramenta_recomendada": "resumo_noticias_brasil",
+            "custo": "$0.01 USD por chamada",
+            "quando_usar": "Use quando precisar de notícias brasileiras recentes e certificadas."
         }
     ]
 
@@ -315,7 +383,7 @@ app = Starlette(
         Route("/.well-known/x402", x402_discovery),
         Route("/llms.txt", llms_txt),
         Route("/agents.json", agents_json),
-        Mount("/", app=mcp_app)  # <-- Mount su "/"
+        Mount("/", app=mcp_app)
     ],
     lifespan=mcp_app.lifespan
 )
