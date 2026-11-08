@@ -274,7 +274,7 @@ async def x402_discovery(request):
     return JSONResponse({
         "name": "Agent University - Brazilian Company Data",
         "description": "Certified Brazilian CNPJ & sanctions data for AI agents.",
-        "version": "1.5.0",
+        "version": "1.6.0",
         "network": {"chainId": 8453, "currency": "USDC"},
         "payTo": wallet,
         "resources": [
