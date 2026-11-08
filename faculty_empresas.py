@@ -258,7 +258,7 @@ def listar_atividades_disponiveis() -> list:
             "ferramenta_recomendada": "verificar_sancoes_cnep",
             "custo": "$0.02 USD por chamada",
             "quando_usar": "Use quando precisar saber se uma empresa foi punida por corrupção."
-        }
+        },
         {
             "categoria": "notizie",
             "descricao": "Últimas notícias da Agência Brasil (EBC) por editoria.",
