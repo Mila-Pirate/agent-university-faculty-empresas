@@ -14,20 +14,18 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route, Mount
 
-# --- CONFIGURAZIONE PAYMCP (CORRETTA) ---
+# --- CONFIGURAZIONE PAYMCP ---
 wallet_address = os.getenv("VAULLS_PAY_TO")
 if not wallet_address:
     raise ValueError("Wallet address non configurato. Imposta VAULLS_PAY_TO su Render.")
 
 mcp = FastMCP("Agent University - Faculty of Brazilian Companies")
 
-# Inizializza PayMCP con il Facilitator per la verifica crittografica
 PayMCP(
     mcp,
     providers=[
         X402Provider(
             pay_to=[{"address": wallet_address}],
-            # Usa 'facilitator' (non 'facilitator_url')
             facilitator={"url": "https://x402.org/facilitator"}
         )
     ],
@@ -38,6 +36,8 @@ PayMCP(
 @mcp.tool()
 @price(0.01, "USD")
 async def buscar_empresa_por_cnpj(cnpj: str, ctx: Context) -> dict:
+    print(f"TOOL_CALL: buscar_empresa_por_cnpj (cnpj={cnpj}) da IP={ctx.request_context.request.client.host}")
+    
     api_key = os.getenv("APIPJ_KEY")
     if not api_key:
         return {"erro": "Chave API apipj não configurada no servidor."}
@@ -91,6 +91,8 @@ CEIS_URL = "https://portaldatransparencia.gov.br/download-de-dados/ceis"
 @mcp.tool()
 @price(0.02, "USD")
 async def verificar_sancoes_ceis(cnpj: str, ctx: Context) -> dict:
+    print(f"TOOL_CALL: verificar_sancoes_ceis (cnpj={cnpj}) da IP={ctx.request_context.request.client.host}")
+    
     cnpj_limpo = ''.join(filter(str.isdigit, cnpj))
     if len(cnpj_limpo) != 14:
         return {"erro": "CNPJ inválido. Deve conter 14 dígitos."}
@@ -134,6 +136,8 @@ CNEP_URL = "https://portaldatransparencia.gov.br/download-de-dados/cnep"
 @mcp.tool()
 @price(0.02, "USD")
 async def verificar_sancoes_cnep(cnpj: str, ctx: Context) -> dict:
+    print(f"TOOL_CALL: verificar_sancoes_cnep (cnpj={cnpj}) da IP={ctx.request_context.request.client.host}")
+    
     cnpj_limpo = ''.join(filter(str.isdigit, cnpj))
     if len(cnpj_limpo) != 14:
         return {"erro": "CNPJ inválido. Deve conter 14 dígitos."}
@@ -181,10 +185,8 @@ EDITORIAS_VALIDAS = [
 @mcp.tool()
 @price(0.01, "USD")
 async def resumo_noticias_brasil(editoria: str = "geral", limite: int = 5, ctx: Context = None) -> dict:
-    """
-    Retorna as últimas notícias da Agência Brasil (EBC) por editoria.
-    Fonte oficial do governo brasileiro. Sem chave de API.
-    """
+    print(f"TOOL_CALL: resumo_noticias_brasil (editoria={editoria}, limite={limite}) da IP={ctx.request_context.request.client.host if ctx else 'N/A'}")
+    
     editoria = editoria.strip().lower()
     if editoria not in EDITORIAS_VALIDAS:
         return {"erro": f"Editoria inválida. Use: {', '.join(EDITORIAS_VALIDAS)}"}
@@ -193,12 +195,7 @@ async def resumo_noticias_brasil(editoria: str = "geral", limite: int = 5, ctx: 
     url = AGENCIA_BRASIL_RSS.format(editoria=editoria)
     
     try:
-        # Usa feedparser per leggere il feed RSS (tollerante a XML malformato)
         feed = feedparser.parse(url)
-        
-        if feed.bozo:
-            # bozo=1 significa che il feed ha problemi di formato, ma potremmo comunque avere entries
-            pass
         
         entries = feed.entries[:limite]
         if not entries:
@@ -206,12 +203,11 @@ async def resumo_noticias_brasil(editoria: str = "geral", limite: int = 5, ctx: 
         
         notizie = []
         for e in entries:
-            # feedparser normalizza i campi: title, link, published, summary
             notizie.append({
                 "titulo": e.get("title", ""),
                 "link": e.get("link", ""),
                 "data_publicacao": e.get("published", ""),
-                "resumo": e.get("summary", "")[:500],  # Limita a 500 caratteri
+                "resumo": e.get("summary", "")[:500],
                 "fonte": "Agência Brasil (EBC)"
             })
         
@@ -233,10 +229,6 @@ async def resumo_noticias_brasil(editoria: str = "geral", limite: int = 5, ctx: 
 # --- TOOL GRATUITO: SCOPERTA ---
 @mcp.tool()
 def listar_atividades_disponiveis() -> list:
-    """
-    Lista os serviços disponíveis nesta universidade.
-    Use esta ferramenta para descobrir qual ferramenta paga chamar para obter os dados.
-    """
     return [
         {
             "categoria": "empresas",
@@ -281,14 +273,12 @@ async def x402_discovery(request):
             {
                 "method": "POST",
                 "path": "/mcp",
-                "description": "MCP endpoint with tools: buscar_empresa_por_cnpj, verificar_sancoes_ceis, verificar_sancoes_cnep",
+                "description": "MCP endpoint with tools: buscar_empresa_por_cnpj, verificar_sancoes_ceis, verificar_sancoes_cnep, resumo_noticias_brasil",
                 "price": "variable"
             }
         ],
         "links": {"documentation": "https://github.com/Mila-Pirate/agent-university-empresas"}
     })
-
-# ... (dopo la funzione x402_discovery e prima di mcp_app = ...) ...
 
 # --- LLMS.TXT ---
 async def llms_txt(request):
@@ -296,13 +286,14 @@ async def llms_txt(request):
 
 > Certified Brazilian company data and sanctions screening for AI agents. Pay-per-call via x402.
 
-This server provides structured, certified data from official Brazilian government sources. Agents can verify company registration and screen for sanctions.
+This server provides structured, certified data from official Brazilian government sources. Agents can verify company registration, screen for sanctions, and get certified news.
 
 ## Available Tools
 
 - [CNPJ Lookup](https://agent-university-empresas.onrender.com/mcp): Get company registration data from Receita Federal.
 - [CEIS Screening](https://agent-university-empresas.onrender.com/mcp): Check if a company is suspended from public contracts.
 - [CNEP Screening](https://agent-university-empresas.onrender.com/mcp): Check for anti-corruption punishments.
+- [News Summary](https://agent-university-empresas.onrender.com/mcp): Get certified news from Agência Brasil (EBC).
 
 ## Documentation
 
@@ -340,43 +331,23 @@ async def agents_json(request):
                 "endpoint": "https://agent-university-empresas.onrender.com/mcp",
                 "method": "POST",
                 "pricing": {"model": "per_call", "amount": "0.02", "currency": "USD"}
+            },
+            {
+                "id": "news_summary",
+                "name": "Brazilian News Summary",
+                "description": "Get certified news from Agência Brasil (EBC).",
+                "endpoint": "https://agent-university-empresas.onrender.com/mcp",
+                "method": "POST",
+                "pricing": {"model": "per_call", "amount": "0.01", "currency": "USD"}
             }
         ]
     })
 
-# --- MCP SERVER CARD ---
-async def mcp_server_card(request):
-    return JSONResponse({
-        "name": "agent-university-empresas",
-        "description": "Certified Brazilian CNPJ & sanctions data for AI agents.",
-        "version": "1.5.0",
-        "author": "Mila-Pirate",
-        "repository": "https://github.com/Mila-Pirate/agent-university-empresas",
-        "tools": [
-            {"name": "buscar_empresa_por_cnpj", "description": "Get company registration data from Receita Federal."},
-            {"name": "verificar_sancoes_ceis", "description": "Check CEIS sanctions."},
-            {"name": "verificar_sancoes_cnep", "description": "Check CNEP punishments."},
-            {"name": "listar_atividades_disponiveis", "description": "List available tools and prices."}
-        ],
-        "categories": ["brazil", "compliance", "company-data", "sanctions"],
-        "pricing": "paid",
-        "auth_required": false,
-        "transport": "http"
-    })
-
 # --- APP STARLETTE ---
-# --- APP FINALE (Senza Mount("/")) ---
-# Crea l'app FastMCP passando le rotte personalizzate direttamente a http_app()
 mcp_app = mcp.http_app(
     transport="http", 
     stateless_http=True,
-    # FastMCP accetta un parametro 'routes' per le rotte extra
-    # (o le registra automaticamente se usi @mcp.custom_route)
 )
-
-# Se http_app() non accetta 'routes', usa questo approccio:
-# Crea l'app Starlette SENZA Mount("/"), ma montando il server MCP su un percorso specifico
-from starlette.routing import Route, Mount
 
 app = Starlette(
     routes=[
