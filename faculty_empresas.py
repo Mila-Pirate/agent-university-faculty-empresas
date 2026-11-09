@@ -228,7 +228,8 @@ async def resumo_noticias_brasil(editoria: str = "geral", limite: int = 5, ctx: 
 
 # --- TOOL GRATUITO: SCOPERTA ---
 @mcp.tool()
-def listar_atividades_disponiveis() -> list:
+async def listar_atividades_disponiveis(ctx: Context) -> list:
+    print(f"TOOL_CALL: listar_atividades_disponiveis da IP={ctx.request_context.request.client.host}")
     return [
         {
             "categoria": "empresas",
